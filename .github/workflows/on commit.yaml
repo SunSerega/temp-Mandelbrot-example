@@ -1,0 +1,124 @@
+﻿name: Pack and test
+
+on:
+    push:
+    pull_request:
+    
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+    
+permissions:
+    contents: write
+    
+jobs:
+    pack-win:
+        runs-on: windows-latest
+        
+        steps:
+            - name: config
+              run: |
+              
+                git config --global core.autocrlf false
+                git config --global user.name "sun pack bot"
+                git config --global user.email "sunserega2@gmail.com"
+                git config --global --add url.https://github.com/.insteadOf "git@github.com:"
+                
+            - uses: actions/checkout@v3
+            
+            - name: Download and unpack Pascal compiler
+              run: |
+              
+                Invoke-WebRequest -Uri 'https://github.com/SunSerega/pascalabcnet/releases/download/custom-build-tag/PABCNETC.zip' -OutFile 'D:\PABCNETC.zip'
+                
+                Expand-Archive -Path 'D:\PABCNETC.zip' -DestinationPath 'D:\PABCNETC' -Force
+                
+            - name: Compile
+              run: |
+              
+                Get-ChildItem -Path .\* -Include *.log -Recurse | Remove-Item
+                Get-ChildItem -Path .\* -Include *.template -Recurse | Remove-Item
+                
+                Write-Host "Compile: " -NoNewline
+                Start-Process -FilePath 'D:\PABCNETC\pabcnetcclear.exe' -ArgumentList '"0Mandelbrot.pas"' -Wait -NoNewWindow
+                
+            - name: Prepare github script
+              run: npm install @actions/exec
+            
+            - name: Create Github Release
+              uses: actions/github-script@main
+              with:
+                script: |
+                
+                    const tag = "latest-exe-tag"; // git tag name (preferably different from branch name)
+                    const release_name = "Latest .exe build"; // Github release display name
+                    const mark_pre_release = false;
+                    
+                    console.log('environment', process.versions);
+                    
+                    sha = '';
+                    await require('@actions/exec').exec('git', ['rev-parse', 'HEAD'], {
+                        listeners: {
+                            stdout: data => {
+                                sha += data.toString().trim();
+                            },
+                            stderr: data => {
+                                sha += data.toString().trim();
+                            }
+                        }
+                    });
+                    
+                    const { repo: { owner, repo } } = context;
+                    console.log({ owner, repo, sha });
+                    
+                    // Check if the release already exists
+                    const existingReleases = await github.rest.repos.listReleases({ owner, repo });
+                    for (const existingRelease of existingReleases.data) {
+                        if (existingRelease.tag_name === tag) {
+                            console.log('deleing old release', { existingRelease });
+                            await github.rest.repos.deleteRelease({
+                                owner,
+                                repo,
+                                release_id: existingRelease.id,
+                            });
+                            break;
+                        }
+                    }
+                    
+                    try {
+                        await github.rest.git.deleteRef({
+                            owner: owner,
+                            repo: repo,
+                            ref: `tags/${tag}`
+                        });
+                        console.log('Tag deleted successfully');
+                    } catch (error) {
+                        console.error(`Error deleting tag: ${error}`);
+                    }
+                    
+                    const release = await github.rest.repos.createRelease({
+                        owner, repo,
+                        tag_name: tag,
+                        name: release_name,
+                        draft: true,
+                        prerelease: mark_pre_release,
+                        target_commitish: sha
+                    });
+                    
+                    console.log('created release', { release });
+                    
+                    const fs = require('fs').promises;
+                    await github.rest.repos.uploadReleaseAsset({
+                        owner, repo,
+                        release_id: release.data.id,
+                        name: `0Mandelbrot.exe`,
+                        data: await fs.readFile(`./0Mandelbrot.exe`)
+                    });
+                    
+                    console.log('finalizing draft release');
+                    await github.rest.repos.updateRelease({
+                        owner,
+                        repo,
+                        release_id: release.data.id,
+                        draft: false,
+                    });
