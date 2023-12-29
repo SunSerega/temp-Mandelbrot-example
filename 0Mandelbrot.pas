@@ -149,6 +149,12 @@ type
   end;
   
 begin
+  if '[REDIRECTIOMODE]' not in System.Environment.GetCommandLineArgs then
+  begin
+    Rewrite(output, 'err.log');
+    System.IO.StreamWriter(output.GetType.GetField('sw', System.Reflection.BindingFlags.Instance or System.Reflection.BindingFlags.NonPublic).GetValue(output)).AutoFlush := true;
+  end;
+  
   var f := new Form;
   CLMemoryObserver.Current := new TrackingMemoryObserver;
 //  f.ControlBox := false;
@@ -355,7 +361,14 @@ begin
         need_resize := true;
         // Чтобы не мигало - ждём завершения одной перерисовки
         // в потоке формы, то есть блокируя отсыл информации системе
-        while need_resize do ;
+        
+        //TODO Почему то clEnqueueReleaseGLObjects посылает сообщение окну и ждёт ответа
+        // - В таком случае ожидание тут зависнет
+        // - Пока что обрубаем ожидание если ждали достаточно долго
+        // - И проявляется только в релизе...
+        var sw := Stopwatch.StartNew;
+        
+        while need_resize and (sw.Elapsed.TotalSeconds<0.1) do ;
       end;
     end;
     
@@ -795,6 +808,7 @@ begin
   except
     on e: Exception do
     begin
+      wait_for_last_frame := false;
       MessageBox.Show(e.ToString);
       Halt;
     end;
