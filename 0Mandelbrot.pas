@@ -14,11 +14,12 @@
 // - Ctrl+V:      Вставить положение камеры
 // - Win+V:       Вставить положение камеры из истории буфера обмена
 // - Q:           Сбросить визуальную информацию предыдущих кадров
+// - I:           Окно с доп. информацией о сцене
 //TODO:
 // - B:           Телепортировать камеру к курсору (Blink)
 // --- Пока держат - выводить точку, а телепортировать когда отпускают
 
-// В модуле Settings находятся все основных константы
+// В модуле Settings находятся все основные константы
 // + объяснение логики программы, чтобы понимать зачем эти константы
 // Ctrl+тыкните на название модуля тут, в uses, чтобы открыть его
 uses Settings;
@@ -28,6 +29,9 @@ uses Settings;
 // - out[456]
 //TODO Выводить отдельно для sheet и для блоков
 // - Для этого надо находить номер блока и точки в нём и кидать (x;y) точки в CQ_GetData
+//TODO Может выводить z тоже? Чтобы смотреть, как прыгает со временем
+// - В отдельном окне, там где инфа о памяти и т.п.
+//TODO Ещё можно отдельно считать очень много шагов конкретно для этой 1 точки, чтобы видеть прогресс расчёта
 
 //TODO При очень большом приближении край рисунка ведёт себя криво
 // - Потому что FirstWordToReal
@@ -37,19 +41,17 @@ uses Settings;
 // - Надо запоминать camera.pos в начале движения мышкой
 // - И затем пересчитывать на каждом кадре относительно него
 
-//TODO Отдельное окно по нажатию какой-то клавиши с кучей инфы
-// - Загруженность памяти (VRAM,RAM,Drive)
-// - Скорость обработки блоков (ну и текущее кол-во слов там же)
-// - Для начала выводить сколько памяти тратится на sheet-ы
-
 //TODO Всё ещё наблюдаются редкие глюки CQ_CopySheet, особенно при больших прыжках масштаба
-//TODO Так же заметил с горизонтальным движением, когда не хватает оперативки
 // - Может это скорее потому что что-то не обнуляется?
+// - Можно легко вопроизвести если не передавать last_render_info в GetRenderInfo (передавать nil)
+//TODO Так же заметил с горизонтальным движением, когда не хватает оперативки
 // - Сложно тестировать потому что начинаются ещё и всякие INVALID_KERNEL_ARGS вдруг...
 
 //TODO Попробовать всё же отсекать циклические точки, запоминая N (к примеру 5?) последних шагов
 
 //TODO Отдельная программа для полной прорисовки кардров с движением камеры от 1 точки (и масштаба) к другой
+//TODO Ещё один репозиторий, с разными примерами картинок и видео, отрендереных этой программой
+// - Одно из вёркфлоу должно просить добавить файл Credits в папке с новым примером
 
 uses System;
 uses System.Windows.Forms;
@@ -63,6 +65,7 @@ uses GL_CL_Context;
 
 uses Common;// in '../Common'; //TODO Merge
 
+uses ExecInfo;
 uses PointComponents;
 uses CameraDef;
 uses Blocks;
@@ -149,11 +152,11 @@ type
   end;
   
 begin
-  if '[REDIRECTIOMODE]' not in System.Environment.GetCommandLineArgs then
-  begin
-    Rewrite(output, 'err.log');
-    System.IO.StreamWriter(output.GetType.GetField('sw', System.Reflection.BindingFlags.Instance or System.Reflection.BindingFlags.NonPublic).GetValue(output)).AutoFlush := true;
-  end;
+//  if '[REDIRECTIOMODE]' not in System.Environment.GetCommandLineArgs then
+//  begin
+//    Rewrite(output, 'err.log');
+//    System.IO.StreamWriter(output.GetType.GetField('sw', System.Reflection.BindingFlags.Instance or System.Reflection.BindingFlags.NonPublic).GetValue(output)).AutoFlush := true;
+//  end;
   
   var f := new Form;
   CLMemoryObserver.Current := new TrackingMemoryObserver;
@@ -173,7 +176,7 @@ begin
   var camera_saved_pos_fname := 'camera.dat';
   var camera_saved_pos_enc := new System.Text.UTF8Encoding(true);
   
-  {$region Закрытие}
+  {$region Close}
   
   f.KeyUp += (o,e)->
   case e.KeyCode of
@@ -187,11 +190,11 @@ begin
     var shutdown_progress_form := new Form;
     shutdown_progress_form.StartPosition := FormStartPosition.CenterScreen;
     shutdown_progress_form.FormBorderStyle := FormBorderStyle.None;
-    shutdown_progress_form.Closing += (o,e)->
+    shutdown_progress_form.Closing += (o,e)->System.Threading.Tasks.Task.Run(()->
     begin
       while wait_for_last_frame do ;
       Halt;
-    end;
+    end);
     shutdown_progress_form.KeyUp += (o,e)->
     case e.KeyCode of
       Keys.Escape: shutdown_progress_form.Close;
@@ -222,7 +225,7 @@ begin
     shutdown_progress_form.ShowDialog;
   end;
   
-  {$endregion Закрытие}
+  {$endregion Close}
   
   {$region speak}
   
@@ -351,6 +354,16 @@ begin
   {$region Управление}
   begin
     
+    {$region show info}
+    
+    InfoWindow.Init(f);
+    f.KeyUp += (o,e)->
+    case e.KeyCode of
+      Keys.I: InfoWindow.Activate;
+    end;
+    
+    {$endregion show info}
+    
     {$region resize}
     
     f.Shown += (o,e)->
@@ -366,9 +379,10 @@ begin
         // - В таком случае ожидание тут зависнет
         // - Пока что обрубаем ожидание если ждали достаточно долго
         // - И проявляется только в релизе...
-        var sw := Stopwatch.StartNew;
-        
-        while need_resize and (sw.Elapsed.TotalSeconds<0.1) do ;
+        //TODO Пока вообще убрал ожидание...
+//        var sw := Stopwatch.StartNew;
+//        
+//        while need_resize and (sw.Elapsed.TotalSeconds<0.1) do ;
       end;
     end;
     
@@ -682,6 +696,7 @@ begin
       
       var render_sheet_w := b_cx * block_w;
       var render_sheet_h := b_cy * block_w;
+      var render_sheet_req_points := render_sheet_w*render_sheet_h;
       
       var l_sheet_less_mode := sheet_less_mode;
       var need_back_sheet := not l_sheet_less_mode
@@ -697,13 +712,19 @@ begin
         Q_Release += CQReleaseGL(sheet_draw.b_cl);
         Swap(sheet_back, sheet_draw);
       end;
-      var need_zero_out := l_sheet_less_mode or sheet_draw.EnsureLen(render_sheet_w * render_sheet_h);
+      var sheet_size_updated := sheet_draw.EnsureLen(render_sheet_req_points);
+      var need_zero_out := l_sheet_less_mode or sheet_size_updated;
       Q_Acquire += CQAcquireGL(sheet_draw.b_cl);
       Q_Release += CQReleaseGL(sheet_draw.b_cl);
       if need_back_sheet or need_zero_out then
         Q_Init += sheet_draw.b_cl.MakeCCQ.ThenFillValue(0).DiscardResult;
       if need_back_sheet then
         Q_Init += render_info.last_sheet_diff.Value.CQ_CopySheet(sheet_back.b_cl, sheet_draw.b_cl, last_render_sheet_w, render_sheet_w, render_sheet_h);
+      InfoWindow.UpdateSheet(
+        sheet_draw.b_cl.ByteSize,
+        sheet_back.b_cl?.ByteSize,
+        render_sheet_req_points
+      );
       last_render_sheet_w := render_sheet_w;
       
       //TODO С текущими очередями OpenCLABC не получится тут использовать имеющуюся очередь

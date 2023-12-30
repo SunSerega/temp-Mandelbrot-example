@@ -149,6 +149,7 @@ type
     
     public property Name: string read _name;
     public function Enmr := l.Enmr;
+    public property MemUse: int64 read filled_size;
     
     public procedure BeginUpdate(item_new_table: Dictionary<TData, boolean>);
     begin

@@ -5,6 +5,7 @@
 uses OpenCLABC;
 
 uses Settings;
+uses ExecInfo;
 uses PointComponents;
 uses CameraDef;
 uses MandelbrotSampling;
@@ -522,63 +523,6 @@ type
     
   end;
   
-  //TODO Вытащить код для вывода KB и т.п.
-//  // VRAM/RAM/Drive
-//  MemoryLayer = sealed class
-//    private blocks := new List<PointBlock>;
-//    private new_blocks := new List<PointBlock>;
-//    private layer_name: string;
-//    private max_size: int64;
-//    private get_curr_size: ()->int64;
-//    private next := default(MemoryLayer);
-//    
-//    public constructor(layer_name: string; max_size: int64; get_curr_size: ()->int64);
-//    begin
-//      self.layer_name := layer_name;
-//      self.max_size := max_size;
-//      self.get_curr_size := get_curr_size;
-//    end;
-//    private constructor := raise new System.InvalidOperationException;
-//    
-////    public procedure Flush;
-////    begin
-////      blocks.AddRange(new_blocks);
-////      new_blocks.Clear;
-////    end;
-////    public procedure FlushAll := Enmr.ForEach(l->l.Flush);
-//    
-//    public function MemoryInfoStr: string;
-//    begin
-//      var c1 := real(get_curr_size());
-//      var c2 := real(max_size);
-//      
-//      var pow := 0;
-//      var pow_step := 1024;
-//      var pow_names := |'KB','MB','GB'|;
-//      while (c1>=pow_step) or (c2>=pow_step) do
-//      begin
-//        if pow=pow_names.Length then break;
-//        pow += 1;
-//        c1 /= pow_step;
-//        c2 /= pow_step;
-//      end;
-//      
-//      var pow_name := if pow=0 then nil else ' '+pow_names[pow];
-//      Result := $'{layer_name}: {c1}/{c2}{pow_name} ({c1/c2:000.00%})';
-//    end;
-//    public function Enmr: sequence of MemoryLayer;
-//    begin
-//      var curr := self;
-//      repeat
-//        yield curr;
-//        curr := curr.next;
-//      until curr=nil;
-//    end;
-//    
-//    
-//    
-//  end;
-  
   VRAM_MemoryLayer = sealed class(MemoryLayer<PointBlock>)
     
     public constructor := inherited Create('VRAM', Settings.max_VRAM);
@@ -718,6 +662,8 @@ type
       
       while true do
       try
+        
+        {$region shutdown}
         if shutdown_progress<>nil then
         begin
           
@@ -749,6 +695,7 @@ type
           if on_shutdown_done<>nil then on_shutdown_done();
           break;
         end;
+        {$endregion shutdown}
         
         var area: BlockLayerSubArea;
         begin
@@ -843,7 +790,12 @@ type
         );
         step_sw.Stop;
         
-        step_info_str := $'u={update_count/step_count:N0}/step, {step_count} steps in {step_sw.Elapsed.TotalSeconds:N3}s';
+        InfoWindow.UpdateVRAM(ml_vram.Enmr.Count, update_blocks.Length, req_blocks.Length, ml_vram.MemUse);
+        InfoWindow.UpdateRAM(ml_ram.Enmr.Count, ml_ram.MemUse);
+        InfoWindow.UpdateDrive(ml_drive.Enmr.Count, ml_drive.MemUse);
+        
+        InfoWindow.UpdateSteps(step_count, area.c_min.Size);
+        InfoWindow.UpdateUPS(update_count/step_count, step_sw.Elapsed.TotalSeconds);
         
         // Тут бы PID контроллер реализовать вообще, потому что
         // зависимость времени от кол-ва шагов не линейная
