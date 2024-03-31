@@ -53,9 +53,9 @@ const int avg_pts_count = n_pts_avg*n_pts_avg;
 
 void main() {
 	// screen_pos is -1..+1
-	vec2 sheet_pos_f = (screen_pos+1f)/2f;
+	vec2 sheet_pos_f = (screen_pos+1.f)/2.f;
 	
-	sheet_pos_f *= vec2(1f-sheet_skip_x_frst-sheet_skip_x_last, 1f-sheet_skip_y_frst-sheet_skip_y_last);
+	sheet_pos_f *= vec2(1.f-sheet_skip_x_frst-sheet_skip_x_last, 1.f-sheet_skip_y_frst-sheet_skip_y_last);
 	sheet_pos_f += vec2(sheet_skip_x_frst, sheet_skip_y_frst);
 	
 	sheet_pos_f *= sheet_size-n_pts_avg;

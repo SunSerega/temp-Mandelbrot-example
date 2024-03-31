@@ -105,8 +105,7 @@ type
       
       //TODO l_vram_data may still be used by the render thread
       // - Maybe, instead of disposing, add to some list that render thread can dispose at the end of frame
-      //TODO #????: &<array of cardinal>
-      Result += l_vram_data.MakeCCQ.ThenReadArray(HFQ&<array of cardinal>(()->l_ram_data, need_own_thread := false)) +
+      Result += l_vram_data.MakeCCQ.ThenReadArray(HFQ(()->l_ram_data, need_own_thread := false)) +
         HPQ(()->
         begin
           l_vram_data.Dispose;
@@ -324,11 +323,17 @@ type
     // Positive if new sheet covers smaller scale than old sheet
     private scale_diff: integer;
     
-    {$resource SheetTransfer.cl}
-    private static sheet_transfer_code_text := System.IO.StreamReader.Create(
-      System.Reflection.Assembly.GetCallingAssembly.GetManifestResourceStream('SheetTransfer.cl')
-    ).ReadToEnd;
-    private static sheet_transfer_code := new CLProgramCode(sheet_transfer_code_text);
+    private static sheet_transfer_code: CLProgramCode;
+    static constructor;
+    begin
+      {$resource SheetTransfer.cl}
+      var sheet_transfer_code_text := System.IO.StreamReader.Create(
+        System.Reflection.Assembly.GetCallingAssembly.GetManifestResourceStream('SheetTransfer.cl')
+      ).ReadToEnd;
+      var opt := new CLProgramCompOptions;
+      opt.Version := (3,0);
+      sheet_transfer_code := new CLProgramCode(sheet_transfer_code_text, opt);
+    end;
     
     public function IsNoChange := (bounds_diff = default(BoundDefs<integer>)) and (scale_diff=0);
     
@@ -493,7 +498,7 @@ type
       if last_ri<>nil then
       try
         var last_ri_v := last_ri.Value;
-        var last_sheet_diff: SheetDiff;
+        var last_sheet_diff := new SheetDiff; //TODO #3070
         
         last_sheet_diff.scale_diff := Result.block_sz_bit_ind - last_ri_v.block_sz_bit_ind;
         if Abs(last_sheet_diff.scale_diff)>16 then

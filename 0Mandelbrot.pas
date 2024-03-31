@@ -142,8 +142,9 @@ type
         CLMemoryObserver.Current.RemoveMemoryUse(b_cl.ByteSize, b_gl);
       gl.NamedBufferData(b_gl, new UIntPtr(len*System.Runtime.InteropServices.Marshal.SizeOf&<T>), IntPtr.Zero, glVertexBufferObjectUsage.STREAM_DRAW);
       GL_CL_Context.WrapBuffer(b_gl, b_cl);
-      if b_cl.Length <> len then
-        raise new InvalidOperationException;
+      // Can be >, if implementation round up when allocating, and doesn't hide it
+      if b_cl.Length < len then
+        raise new InvalidOperationException($'{b_cl.Length} < {len}');
       CLMemoryObserver.Current.AddMemoryUse(b_cl.ByteSize, b_gl);
       
       Result := true;
